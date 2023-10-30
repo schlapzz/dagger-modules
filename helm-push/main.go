@@ -78,7 +78,11 @@ func (h *HelmPush) PackagePush(ctx context.Context, d *Directory, registry strin
 		return nil
 	}
 
-	_, err = c.WithExec([]string{"helm", "package", "."}).WithExec([]string{"sh", "-c", "ls"}).WithExec([]string{"helm", "push", fmt.Sprintf("%s-%s.tgz", name, version), opts.getRepoFqdn()}).Sync(ctx)
+	_, err = c.WithExec([]string{"helm", "dependency", "update", "."}).
+		WithExec([]string{"helm", "package", "."}).
+		WithExec([]string{"sh", "-c", "ls"}).
+		WithExec([]string{"helm", "push", fmt.Sprintf("%s-%s.tgz", name, version), opts.getRepoFqdn()}).
+		Sync(ctx)
 	if err != nil {
 		return err
 	}
