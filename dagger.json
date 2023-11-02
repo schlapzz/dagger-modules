@@ -1,0 +1,8 @@
+{
+  "name": "modest",
+  "sdk": "go",
+  "dependencies": [
+    "helm-push",
+    "vault-kv"
+  ]
+}
