@@ -29,7 +29,7 @@ func (p PushOpts) getRepoFqdn() string {
 	if p.Oci {
 		return fmt.Sprintf("oci://%s/%s", p.Registry, p.Repository)
 	}
-	return fmt.Sprintf("%s/%s/%s", p.Registry, p.Repository)
+	return fmt.Sprintf("%s/%s", p.Registry, p.Repository)
 }
 
 func (h *HelmPush) PackagePush(ctx context.Context, d *Directory, registry string, repository string, username string, password string) error {
