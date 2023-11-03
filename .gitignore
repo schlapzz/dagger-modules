@@ -1,1 +1,4 @@
 git/id*
+/dagger.gen.go
+/internal/querybuilder/
+/querybuilder/
