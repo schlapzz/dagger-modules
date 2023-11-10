@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/xanzy/go-gitlab"
-	"github.com/xyproto/randomstring"
 	"gopkg.in/yaml.v3"
 )
 
@@ -54,7 +54,7 @@ func (m *GitActionRepository) Push(ctx context.Context, dir *Directory, prBranch
 		WithDirectory(WorkDir, dir)
 
 	if prBranch.isSet {
-		c = c.WithExec([]string{"git", "checkout", "-b", prBranch.GetOr("main")})
+		c = c.WithExec([]string{"git", "switch", prBranch.GetOr("main")})
 	}
 
 	_, err := c.WithExec([]string{"git", "add", "."}).
@@ -78,20 +78,38 @@ func prepareContainer(key *File) *Container {
 }
 
 // pitc-cicd-helm-demo-prod
-func (m *GitActionRepository) UpdateHelmRevision(ctx context.Context, envName string, revision string, pushBranch Optional[string]) error {
+func (m *GitActionRepository) UpdateHelmRevision(ctx context.Context, envName string, revision string, pushBranch Optional[string]) (bool, error) {
 
 	gitDir, err := m.CloneSsh(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	mod := dag.Container().From("registry.puzzle.ch/cicd/alpine-base:latest").
 		WithDirectory(WorkDir, gitDir).
 		WithWorkdir(WorkDir).
-		WithExec([]string{"sh", "-c", fmt.Sprintf("yq eval '.environments |= map(select(.name == \"%s\").argocd.helm.targetRevision=\"%s\")' -i argocd/values.yaml", envName, revision)}).
+		WithExec([]string{"git", "switch", "-c", pushBranch.GetOr("main")}).
+		WithExec([]string{"sh", "-c", fmt.Sprintf("yq eval '.environments | map(select(.name == \"%s\")).[].argocd.helm.targetRevision'  argocd/values.yaml", envName)})
+
+	deployVersion, err := mod.Stdout(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if revision == strings.TrimSpace(deployVersion) {
+		fmt.Printf("skip task, version %s already deployed\n", deployVersion)
+		return false, nil
+	}
+
+	pushDir := mod.WithExec([]string{"sh", "-c", fmt.Sprintf("yq eval '.environments |= map(select(.name == \"%s\").argocd.helm.targetRevision=\"%s\")' -i argocd/values.yaml", envName, revision)}).
 		Directory(WorkDir)
 
-	return m.Push(ctx, mod, pushBranch)
+	err = m.Push(ctx, pushDir, pushBranch)
+	if err == nil {
+		return true, nil
+	}
+
+	return false, err
 
 }
 
@@ -112,8 +130,7 @@ func (m *GitActionRepository) UpdateImageTagHelm(ctx context.Context, key *File,
 	prBranch := Optional[string]{}
 
 	if createPr.GetOr(false) {
-		rand := randomstring.HumanFriendlyEnglishString(6)
-		prBranch = Opt[string](fmt.Sprintf("update/helm-revision-%s-%s", revision, rand))
+		prBranch = Opt[string](fmt.Sprintf("update/helm-revision-%s", revision))
 	}
 
 	return m.Push(ctx, mod, prBranch)
@@ -196,14 +213,19 @@ func (m *GitActions) Run(ctx context.Context, key *File, apiToken string, versio
 		return err
 	}
 
-	rand := randomstring.HumanFriendlyEnglishString(6)
-	prBranch := Opt[string](fmt.Sprintf("update/helm-revision-%s-%s", version, rand))
+	//rand := randomstring.HumanFriendlyEnglishString(6)
+	prBranch := Opt[string](fmt.Sprintf("update/helm-revision-%s", version))
 
 	action := m.WithRepository(ctx, mrConfig.OpsRepository, key)
-	err = action.
+	updated, err := action.
 		UpdateHelmRevision(ctx, mrConfig.Environment, version, prBranch)
 	if err != nil {
 		return err
+	}
+
+	if !updated {
+		fmt.Println("skip task")
+		return nil
 	}
 
 	return m.WithAPI(ctx, "https://gitlab.puzzle.ch", apiToken).
