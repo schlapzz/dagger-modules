@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/xanzy/go-gitlab"
@@ -57,7 +58,7 @@ func (m *GitActionRepository) Push(ctx context.Context, dir *Directory, prBranch
 	}
 
 	_, err := c.WithExec([]string{"git", "add", "."}).
-		WithExec([]string{"git", "commit", "-m", "oinkoink"}).
+		WithExec([]string{"git", "commit", "-m", "autocommit"}).
 		WithExec([]string{"git", "push"}).
 		Sync(ctx)
 
@@ -171,20 +172,26 @@ func StringPtr(s string) *string {
 
 type MrConfig struct {
 	OpsRepository string   `yaml:"opsRepository"`
-	SourceBranch  string   `yaml:"sourceBranch"`
-	TargetBranch  string   `yaml:"targetBranch"`
+	Environment   string   `yaml:"environment"`
 	Tags          []string `yaml:"tags"`
 }
 
-func (m *GitActions) Run(ctx context.Context, config *File, key *File, apiToken string, version string) error {
+func (m *GitActions) Run(ctx context.Context, key *File, apiToken string, version string) error {
 
-	content, err := config.Contents(ctx)
+	_, err := os.Stat("./config.yaml")
+	if err != nil {
+		//No config provided
+		fmt.Println("No config provided, skip task")
+		return nil
+	}
+
+	content, err := os.ReadFile("./config.yaml")
 	if err != nil {
 		return err
 	}
 
 	mrConfig := &MrConfig{}
-	err = yaml.Unmarshal([]byte(content), mrConfig)
+	err = yaml.Unmarshal(content, mrConfig)
 	if err != nil {
 		return err
 	}
@@ -192,14 +199,14 @@ func (m *GitActions) Run(ctx context.Context, config *File, key *File, apiToken 
 	rand := randomstring.HumanFriendlyEnglishString(6)
 	prBranch := Opt[string](fmt.Sprintf("update/helm-revision-%s-%s", version, rand))
 
-	action := m.WithRepository(ctx, "git@ssh.gitlab.puzzle.ch:cschlatter/clone-test.git", key)
+	action := m.WithRepository(ctx, mrConfig.OpsRepository, key)
 	err = action.
-		UpdateHelmRevision(ctx, "pitc-cicd-helm-demo-prod", version, prBranch)
+		UpdateHelmRevision(ctx, mrConfig.Environment, version, prBranch)
 	if err != nil {
 		return err
 	}
 
 	return m.WithAPI(ctx, "https://gitlab.puzzle.ch", apiToken).
-		WithMergeRequest(ctx, "cschlatter/clone-test", prBranch.value, "main", Opt[string]("YOLO"), Opt[string]("YOLO")).
+		WithMergeRequest(ctx, "cschlatter/clone-test", prBranch.value, "main", Opt[string](fmt.Sprintf("Update Helm Chart version => %s", version)), Opt[string]("Triggered by Dagger")).
 		createGitLabMR(ctx)
 }

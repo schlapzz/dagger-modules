@@ -63,6 +63,7 @@ func (h *HelmPush) PackagePush(ctx context.Context, d *Directory, registry strin
 		return err
 	}
 
+	//TODO: Refactor with return
 	c, err = c.WithExec([]string{"sh", "-c", fmt.Sprintf("helm show chart %s --version %s; echo -n $? > /ec", opts.getChartFqdn(name), version)}).Sync(ctx)
 	if err != nil {
 		return err
