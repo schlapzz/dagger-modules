@@ -32,6 +32,16 @@ func (p PushOpts) getRepoFqdn() string {
 	return fmt.Sprintf("%s/%s", p.Registry, p.Repository)
 }
 
+func (h *HelmPush) Version(ctx context.Context, d *Directory) (string, error) {
+	c := dag.Container().From("registry.puzzle.ch/cicd/alpine-base:latest").WithDirectory("/helm", d).WithWorkdir("/helm")
+	version, err := c.WithExec([]string{"sh", "-c", "helm show chart . | yq eval '.version' -"}).Stdout(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(version), nil
+}
+
 func (h *HelmPush) PackagePush(ctx context.Context, d *Directory, registry string, repository string, username string, password string) error {
 
 	opts := PushOpts{
