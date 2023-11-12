@@ -2,3 +2,4 @@ go 1.21.3
 
 use ./git-actions
 use ./helm
+use ./gitops
