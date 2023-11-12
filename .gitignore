@@ -1,4 +1,5 @@
-git/id*
+**/id
+**/id.pub
 /dagger.gen.go
 /internal/querybuilder/
 /querybuilder/
